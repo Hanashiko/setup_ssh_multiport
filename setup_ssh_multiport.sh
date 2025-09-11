@@ -225,11 +225,12 @@ else
     exit 1
 fi
 
-sleep 5
 print_status "Запуск нової SSH служби..."
 systemctl start sshnew
 sleep 2
 systemctl enable sshnew
+sleep 10
+systemctl restart sshnew
 
 if systemctl is-active --quiet sshnew; then
     print_status "✅ SSH служба успішно запущена"
@@ -326,4 +327,3 @@ echo "• Перезапуск служби: systemctl restart sshnew"
 echo "• Логи служби: journalctl -u sshnew -f"
 echo ""
 print_warning "⚠️  ВАЖЛИВО: Переконайтесь що файрвол налаштований для пропуску нових портів!"
-print_warning "⚠️  Приклад для ufw: sudo ufw allow $MIN_PORT:$MAX_PORT/tcp"
