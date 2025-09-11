@@ -1,6 +1,6 @@
 # setup_ssh_multiport
 
-A Bash script that instllas and configures OpenSSH with support for multiple SSH ports.
+A Bash script that installs and configures OpenSSH with support for multiple SSH ports.
 It compiles OpenSSh from source, modifies the `MAX_LISTEN_SOCKS` limit, creates a new systemd service (`sshnew`), and automatically opens a user-defined number of SSH ports.
 
 ---
