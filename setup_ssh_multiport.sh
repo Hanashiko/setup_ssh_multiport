@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SSH Multi-Port Setup Script
-# Автоматично встановлює OpenSSH з можливістю відкриття багатьох портів
+# Automatically installs OpenSSH with support for multiple ports
 
 set -e 
 
@@ -18,62 +18,62 @@ print_warning() {
 }
 
 if [ "$EUID" -ne 0 ]; then
-    print_error "Цей скрипт потрібно запускати з правами root (sudo)"
+    print_error "This script must be run as root (sudo)"
     exit 1
 fi
 
 echo "=== SSH Multi-Port Setup ==="
 echo ""
 
-read -p "Скільки SSH портів потрібно відкрити? (за замовчуванням: 30): " PORTS_COUNT
+read -p "Hoe many SSH ports do you want to open? (default: 30): " PORTS_COUNT
 PORTS_COUNT=${PORTS_COUNT:-30}
 
 if ! [[ "$PORTS_COUNT" =~ ^[0-9]+$ ]] || [ "$PORTS_COUNT" -lt 1 ]; then
-    print_error "Будь ласка, введіть правильне число портів (більше 0)"
+    print_error "Please enter a valid number of ports (greater than 0)"
     exit 1
 fi
 
 MAX_LISTEN_SOCKS=$((PORTS_COUNT * 2))
 
 echo ""
-echo "Налаштування діапазону портів:"
-read -p "Мінімальний порт (за замовчуванням: 2000): " MIN_PORT
+echo "Port range configuration:"
+read -p "Minimum port (default: 2000): " MIN_PORT
 MIN_PORT=${MIN_PORT:-2000}
 
-read -p "Максимальний порт (за замовчуванням: 65000): " MAX_PORT
+read -p "Maximum port (default: 65000): " MAX_PORT
 MAX_PORT=${MAX_PORT:-65000}
 
 if ! [[ "$MIN_PORT" =~ ^[0-9]+$ ]] || ! [[ "$MAX_PORT" =~ ^[0-9]+$ ]]; then
-    print_error "Порти повинні бути числами"
+    print_error "Ports must be numbers"
     exit 1
 fi
 
 if [ "$MIN_PORT" -ge "$MAX_PORT" ]; then
-    print_error "Мінімальний порт повинен бути менший за максимальний"
+    print_error "Minimum port must be less than maximum port"
     exit 1
 fi
 
 if [ "$MIN_PORT" -lt 1024 ]; then
-    print_warning "Використання портів менше 1024 може потребувати додаткових дозволів"
+    print_warning "Using ports below 1024 may require additional privileges"
 fi
 
 echo ""
-print_status "Налаштування:"
-print_status "  Кількість портів: $PORTS_COUNT"
+print_status "Confguration:"
+print_status "  Number of ports: $PORTS_COUNT"
 print_status "  MAX_LISTEN_SOCKS: $MAX_LISTEN_SOCKS"
-print_status "  Діапазон портів: $MIN_PORT-$MAX_PORT"
+print_status "  Port range: $MIN_PORT-$MAX_PORT"
 echo ""
 
-read -p "Продовжити встановлення? (y/N): " CONFIRM
+read -p "Proceed with installation? (y/N): " CONFIRM
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    print_status "Встановлення скасовано"
+    print_status "Installation cancelled"
     exit 0
 fi
 
 echo ""
-print_status "Початок встановлення..."
+print_status "Starting installation..."
 
-print_status "Встановлення залежностей..."
+print_status "Installing dependencies..."
 apt update
 apt install -y libssl-dev gcc g++ gdb cpp make cmake libtool libc6 autoconf automake pkg-config build-essential gettext
 apt install -y libzstd1 zlib1g libssh-4 libssh-dev libssl3 libc6-dev libc6 libcrypt-dev
@@ -81,7 +81,7 @@ apt install -y libzstd1 zlib1g libssh-4 libssh-dev libssl3 libc6-dev libc6 libcr
 cd /usr/local/src
 
 VER="9.6p1"
-print_status "Завантаження OpenSSH $VER..."
+print_status "Downloading OpenSSH $VER..."
 
 rm -f openssh-${VER}.tar.gz openssh-${VER}.tar.gz.asc RELEASE_KEY.asc
 rm -rf openssh-${VER}
@@ -90,45 +90,45 @@ wget https://mirror.businessconnect.nl/pub/OpenBSD/OpenSSH/portable/openssh-${VE
 wget https://mirror.businessconnect.nl/pub/OpenBSD/OpenSSH/RELEASE_KEY.asc
 wget https://mirror.businessconnect.nl/pub/OpenBSD/OpenSSH/portable/openssh-${VER}.tar.gz.asc
 
-print_status "Перевірка підпису..."
-gpg --import RELEASE_KEY.asc 2>/dev/null || print_warning "Не вдалося імпортувати GPG ключ"
-gpg --verbose --verify openssh-${VER}.tar.gz.asc 2>/dev/null || print_warning "Не вдалося перевірити підпис"
+print_status "Verifying signature..."
+gpg --import RELEASE_KEY.asc 2>/dev/null || print_warning "Failed to import GPG key"
+gpg --verbose --verify openssh-${VER}.tar.gz.asc 2>/dev/null || print_warning "Failed to verify signature"
 
-print_status "Розпакування архіву..."
+print_status "Extracting archive..."
 tar -xf openssh-${VER}.tar.gz
 cd openssh-${VER}
 
-print_status "Модифікація MAX_LISTEN_SOCKS до $MAX_LISTEN_SOCKS..."
+print_status "Modifying MAX_LISTEN_SOCKS to $MAX_LISTEN_SOCKS..."
 
 if grep -q "MAX_LISTEN_SOCKS" sshd.c; then
-    print_status "Знайдено MAX_LISTEN_SOCKS, коментування старого значення та додавання нового..."
+    print_status "Found MAX_LISTEN_SOCKS, commenting old value and adding new one..."
 
     sed -i '/^#define[[:space:]]*MAX_LISTEN_SOCKS/c\
 // #define MAX_LISTEN_SOCKS        16  /* original value */\
 #define MAX_LISTEN_SOCKS        '"$MAX_LISTEN_SOCKS"' /* modified for multiple ports */' sshd.c
 
-    print_status "Зміни в sshd.c:"
+    print_status "Changes in sshd.c:"
     grep -A2 -B2 "MAX_LISTEN_SOCKS" sshd.c
 else
-    print_error "Не знайдено #define MAX_LISTEN_SOCKS в sshd.c"
-    print_status "Додавання нового визначення в початок файлу..."
+    print_error "Did not find #define MAX_LISTEN_SOCKS in sshd.c"
+    print_status "Adding new definition at the top of the file..."
     sed -i "1i #define MAX_LISTEN_SOCKS        $MAX_LISTEN_SOCKS" sshd.c
 fi
 
 
-print_status "Конфігурація та компіляція..."
+print_status "Configuring and compiling..."
 ./configure --prefix=/opt/openssh-${VER}
 make
 make install
 
-print_status "Створення конфігураційних файлів..."
+print_status "Creating configuration files..."
 mkdir -p /opt/openssh-${VER}/etc/sshd_config.d
 touch /opt/openssh-${VER}/etc/revoked_keys
 chmod 600 /opt/openssh-${VER}/etc/revoked_keys
 
 cp /opt/openssh-${VER}/etc/sshd_config /opt/openssh-${VER}/etc/sshd_config_backup
 
-print_status "Налаштування sshd_config..."
+print_status "Configuring sshd_config..."
 cat > /opt/openssh-${VER}/etc/sshd_config << 'EOF'
 Include /opt/openssh-9.6p1/etc/sshd_config.d/*.conf
 PermitRootLogin yes
@@ -142,7 +142,7 @@ RevokedKeys /opt/openssh-9.6p1/etc/revoked_keys
 Subsystem sftp /opt/openssh-9.6p1/libexec/sftp-server
 EOF
 
-print_status "Створення systemd сервісу..."
+print_status "Creating systemd service..."
 cat > /lib/systemd/system/sshnew.service << 'EOF'
 [Unit]
 Description=OpenBSD Secure Shell server
@@ -167,25 +167,23 @@ WantedBy=multi-user.target
 Alias=sshnew.service
 EOF
 
-print_status "Створення скрипту для відкриття портів..."
+print_status "Creating script for opening ports..."
 cat > /opt/openssh-${VER}/openports.sh << EOF
 #!/bin/bash
 # SSH Ports Opening Script
-# Автоматично генерує конфігурацію портів
+# Automatically generates port configuration
 
 PORTS_COUNT="$PORTS_COUNT"
 MIN_PORT="$MIN_PORT"
 MAX_PORT="$MAX_PORT"
 
-echo "Відкриття \$PORTS_COUNT SSH портів в діапазоні \$MIN_PORT-\$MAX_PORT..."
+echo "Opening \$PORTS_COUNT SSH ports in range \$MIN_PORT-\$MAX_PORT..."
 
 echo "Port 22" > /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf
 
 for ((i=1; i<PORTS_COUNT; i++)); do
-    # Генерація унікального порту
     while true; do
         PORT=\$(shuf -i \$MIN_PORT-\$MAX_PORT -n 1)
-        # Перевірка чи порт не використовується
         if ! grep -q "Port \$PORT" /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf; then
             echo "Port \$PORT" >> /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf
             break
@@ -193,7 +191,7 @@ for ((i=1; i<PORTS_COUNT; i++)); do
     done
 done
 
-echo "Створено конфігурацію з \$(wc -l < /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf) портами"
+echo "Configuration created with \$(wc -l < /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf) ports"
 
 systemctl stop ssh.socket 2>/dev/null || true
 systemctl disable ssh.socket 2>/dev/null || true
@@ -202,30 +200,30 @@ systemctl disable ssh 2>/dev/null || true
 systemctl restart sshnew
 systemctl enable sshnew
 
-echo "SSH сервіс перезапущено з новими портами"
+echo "SSH service restarted with new ports"
 EOF
 
 chmod +x /opt/openssh-${VER}/openports.sh
 
-print_status "Налаштування системних служб..."
+print_status "Configuring system services..."
 systemctl daemon-reload
 systemctl stop ssh.socket 2>/dev/null || true
 systemctl disable ssh.socket 2>/dev/null || true
 systemctl stop ssh 2>/dev/null || true
 systemctl disable ssh 2>/dev/null || true
 
-print_status "Очікування завершення процесів..."
+print_status "Waiting for processes to finish..."
 sleep 3
 
-print_status "Перевірка конфігурації SSH..."
+print_status "Checking SSH configuration..."
 if /opt/openssh-${VER}/sbin/sshd -t; then
-    print_status "✅ Конфігурація SSH валідна"
+    print_status "✅ SSH configuration is valid"
 else
-    print_error "❌ Конфігурація SSH невалідна! Перевірте налаштування."
+    print_error "❌ SSH configuration is invalid! Check your settings."
     exit 1
 fi
 
-print_status "Запуск нової SSH служби..."
+print_status "Starting new SSH service..."
 systemctl start sshnew
 sleep 2
 systemctl enable sshnew
@@ -233,38 +231,38 @@ sleep 10
 systemctl restart sshnew
 
 if systemctl is-active --quiet sshnew; then
-    print_status "✅ SSH служба успішно запущена"
+    print_status "✅ SSH service started successfully"
 else
-    print_warning "Служба не запустилася, спроба повторного запуску..."
+    print_warning "Service did not start, retrying..."
     sleep 3
     systemctl restart sshnew
     sleep 2
     if systemctl is-active --quiet sshnew; then
-        print_status "✅ SSH служба запущена після повторної спроби"
+        print_status "✅ SSH service started after retry"
     else
-        print_error "❌ Не вдалося запустити SSH сервіс"
-        print_status "Для діагностики використайте: journalctl -u sshnew"
+        print_error "❌ Failed to start SSH service"
+        print_status "Use the following command for diagnostics: journalctl -u sshnew"
         exit 1
     fi
 fi
 
-print_status "Відкриття SSH портів..."
+print_status "Opening SSH ports..."
 bash /opt/openssh-${VER}/openports.sh
 
-print_status "Встановлення завершено!"
+print_status "Installation completed!"
 echo ""
-print_status "Інформація:"
-print_status "  - Новий SSH демон: sshnew"
-print_status "  - Конфігурація: /opt/openssh-${VER}/etc/sshd_config"
-print_status "  - Порти: /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
-print_status "  - Скрипт портів: /opt/openssh-${VER}/openports.sh"
+print_status "Information:"
+print_status "  - New SSH daemon: sshnew"
+print_status "  - Configuration: /opt/openssh-${VER}/etc/sshd_config"
+print_status "  - Ports: /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
+print_status "  - Ports script: /opt/openssh-${VER}/openports.sh"
 echo ""
 
 
-print_status "Відкриті SSH порти:"
+print_status "Opened SSH ports:"
 if [ -f "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf" ]; then
     echo "┌─────────────────────────────────────┐"
-    echo "│           ВІДКРИТІ ПОРТИ            │"
+    echo "│            OPEN PORTS               │"
     echo "├─────────────────────────────────────┤"
 
     PORTS_ARRAY=($(grep "^Port " "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf" | awk '{print $2}'))
@@ -277,7 +275,7 @@ if [ -f "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf" ]; then
         done
 
         echo "├─────────────────────────────────────┤"
-        printf "│ Всього портів: %-16d │\n" "$PORT_COUNT"
+        printf "│ Total ports: %-16d │\n" "$PORT_COUNT"
         echo "└─────────────────────────────────────┘"
         echo ""
 
@@ -290,40 +288,40 @@ if [ -f "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf" ]; then
             fi
         done
 
-        print_status "Резюме портів: $PORTS_LIST"
+        print_status "Ports summary: $PORTS_LIST"
     else
-        echo "│       Жодного порту не знайдено     │"
+        echo "│       No ports found                │"
         echo "└─────────────────────────────────────┘"
         echo ""
-        print_warning "Не знайдено жодного порту в конфігурації"
-        print_status "Вміст файлу конфігурації:"
+        print_warning "No ports found in configuration"
+        print_status "Configuration file content:"
         cat "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
     fi
     echo ""
 
-    print_status "Статус SSH служби:"
+    print_status "SSH service status:"
     if systemctl is-active --quiet sshnew; then
-        echo "🟢 sshnew служба активна і працює"
+        echo "🟢 sshnew service is active and running"
     else
-        echo "🔴 sshnew служба не активна"
+        echo "🔴 sshnew service  is not active"
     fi
 
     if systemctl is-enabled --quiet sshnew; then
-        echo "🟢 sshnew служба увімкнена для автозапуску"
+        echo "🟢 sshnew service is enabled for autostart"
     else
-        echo "🟡 sshnew служба не увімкнена для автозапуску"
+        echo "🟡 sshnew servie is not enabled for autostart"
     fi
 
 else
-    print_error "Файл конфігурації портів не знайдено!"
+    print_error "Ports configuration file not found!"
 fi
 
 echo ""
-print_status "Корисні команди:"
-echo "• Перегляд портів: cat /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
-echo "• Перегенерація портів: bash /opt/openssh-${VER}/openports.sh"
-echo "• Статус служби: systemctl status sshnew"
-echo "• Перезапуск служби: systemctl restart sshnew"
-echo "• Логи служби: journalctl -u sshnew -f"
+print_status "Useful commands:"
+echo "• View ports: cat /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
+echo "• Regenerate ports: bash /opt/openssh-${VER}/openports.sh"
+echo "• Servie status: systemctl status sshnew"
+echo "• Restart service: systemctl restart sshnew"
+echo "• Service logs: journalctl -u sshnew -f"
 echo ""
-print_warning "⚠️  ВАЖЛИВО: Переконайтесь що файрвол налаштований для пропуску нових портів!"
+print_warning "⚠️  IMPORTANT: Make sure your firewall is configured to allow new ports!"
