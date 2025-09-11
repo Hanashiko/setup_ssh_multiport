@@ -3,7 +3,7 @@
 # SSH Multi-Port Setup Script
 # Автоматично встановлює OpenSSH з можливістю відкриття багатьох портів
 
-set -e  
+set -e 
 
 print_status() {
     echo -e "\033[1;32m[INFO]\033[0m $1"
@@ -126,7 +126,6 @@ mkdir -p /opt/openssh-${VER}/etc/sshd_config.d
 touch /opt/openssh-${VER}/etc/revoked_keys
 chmod 600 /opt/openssh-${VER}/etc/revoked_keys
 
-
 cp /opt/openssh-${VER}/etc/sshd_config /opt/openssh-${VER}/etc/sshd_config_backup
 
 print_status "Налаштування sshd_config..."
@@ -180,10 +179,8 @@ MAX_PORT="$MAX_PORT"
 
 echo "Відкриття \$PORTS_COUNT SSH портів в діапазоні \$MIN_PORT-\$MAX_PORT..."
 
-# Створення конфігурації портів
 echo "Port 22" > /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf
 
-# Генерація додаткових портів
 for ((i=1; i<PORTS_COUNT; i++)); do
     # Генерація унікального порту
     while true; do
@@ -198,7 +195,6 @@ done
 
 echo "Створено конфігурацію з \$(wc -l < /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf) портами"
 
-# Перезапуск служби
 systemctl stop ssh.socket 2>/dev/null || true
 systemctl disable ssh.socket 2>/dev/null || true
 systemctl stop ssh 2>/dev/null || true
@@ -218,9 +214,38 @@ systemctl disable ssh.socket 2>/dev/null || true
 systemctl stop ssh 2>/dev/null || true
 systemctl disable ssh 2>/dev/null || true
 
+print_status "Очікування завершення процесів..."
+sleep 3
+
+print_status "Перевірка конфігурації SSH..."
+if /opt/openssh-${VER}/sbin/sshd -t; then
+    print_status "✅ Конфігурація SSH валідна"
+else
+    print_error "❌ Конфігурація SSH невалідна! Перевірте налаштування."
+    exit 1
+fi
+
+sleep 5
 print_status "Запуск нової SSH служби..."
-systemctl restart sshnew
+systemctl start sshnew
+sleep 2
 systemctl enable sshnew
+
+if systemctl is-active --quiet sshnew; then
+    print_status "✅ SSH служба успішно запущена"
+else
+    print_warning "Служба не запустилася, спроба повторного запуску..."
+    sleep 3
+    systemctl restart sshnew
+    sleep 2
+    if systemctl is-active --quiet sshnew; then
+        print_status "✅ SSH служба запущена після повторної спроби"
+    else
+        print_error "❌ Не вдалося запустити SSH сервіс"
+        print_status "Для діагностики використайте: journalctl -u sshnew"
+        exit 1
+    fi
+fi
 
 print_status "Відкриття SSH портів..."
 bash /opt/openssh-${VER}/openports.sh
@@ -233,10 +258,72 @@ print_status "  - Конфігурація: /opt/openssh-${VER}/etc/sshd_config"
 print_status "  - Порти: /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
 print_status "  - Скрипт портів: /opt/openssh-${VER}/openports.sh"
 echo ""
-print_status "Перегляд відкритих портів:"
-echo "cat /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
+
+
+print_status "Відкриті SSH порти:"
+if [ -f "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf" ]; then
+    echo "┌─────────────────────────────────────┐"
+    echo "│           ВІДКРИТІ ПОРТИ            │"
+    echo "├─────────────────────────────────────┤"
+
+    PORTS_ARRAY=($(grep "^Port " "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf" | awk '{print $2}'))
+    PORT_COUNT=${#PORTS_ARRAY[@]}
+
+    if [ $PORT_COUNT -gt 0 ]; then
+        for i in "${!PORTS_ARRAY[@]}"; do
+            PORT_NUM=$((i + 1))
+            printf "│ %-3d. SSH Port: %-18s │\n" "$PORT_NUM" "${PORTS_ARRAY[$i]}"
+        done
+
+        echo "├─────────────────────────────────────┤"
+        printf "│ Всього портів: %-16d │\n" "$PORT_COUNT"
+        echo "└─────────────────────────────────────┘"
+        echo ""
+
+        PORTS_LIST=""
+        for port in "${PORTS_ARRAY[@]}"; do
+            if [ -z "$PORTS_LIST" ]; then
+                PORTS_LIST="$port"
+            else
+                PORTS_LIST="$PORTS_LIST, $port"
+            fi
+        done
+
+        print_status "Резюме портів: $PORTS_LIST"
+    else
+        echo "│       Жодного порту не знайдено     │"
+        echo "└─────────────────────────────────────┘"
+        echo ""
+        print_warning "Не знайдено жодного порту в конфігурації"
+        print_status "Вміст файлу конфігурації:"
+        cat "/opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
+    fi
+    echo ""
+
+    print_status "Статус SSH служби:"
+    if systemctl is-active --quiet sshnew; then
+        echo "🟢 sshnew служба активна і працює"
+    else
+        echo "🔴 sshnew служба не активна"
+    fi
+
+    if systemctl is-enabled --quiet sshnew; then
+        echo "🟢 sshnew служба увімкнена для автозапуску"
+    else
+        echo "🟡 sshnew служба не увімкнена для автозапуску"
+    fi
+
+else
+    print_error "Файл конфігурації портів не знайдено!"
+fi
+
 echo ""
-print_status "Для повторного відкриття портів запустіть:"
-echo "bash /opt/openssh-${VER}/openports.sh"
+print_status "Корисні команди:"
+echo "• Перегляд портів: cat /opt/openssh-${VER}/etc/sshd_config.d/70-ports.conf"
+echo "• Перегенерація портів: bash /opt/openssh-${VER}/openports.sh"
+echo "• Статус служби: systemctl status sshnew"
+echo "• Перезапуск служби: systemctl restart sshnew"
+echo "• Логи служби: journalctl -u sshnew -f"
 echo ""
-print_warning "Переконайтесь що файрвол налаштований для пропуску нових портів!"
+print_warning "⚠️  ВАЖЛИВО: Переконайтесь що файрвол налаштований для пропуску нових портів!"
+print_warning "⚠️  Приклад для ufw: sudo ufw allow $MIN_PORT:$MAX_PORT/tcp"
